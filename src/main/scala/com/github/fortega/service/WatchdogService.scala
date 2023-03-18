@@ -1,17 +1,12 @@
 package com.github.fortega.service
 
 import com.github.fortega.model.{Counter, Watchdog}
-import izumi.reflect.Tag
 import zio.{Duration, Ref, Schedule, ZIO}
 import zio.stream.ZStream
-
 object WatchdogService {
-  def create[Measure](
+  def createCounterIntervalSidecar(
       interval: Duration,
-      measureValidation: Measure => Boolean,
-      accumMeasure: Counter => Measure
-  )(implicit
-      measureTag: Tag[Measure]
+      min: Long = 0
   ) = for {
     refCounter <- ZIO.service[Ref[Counter]]
     refWatchDog <- ZIO.service[Ref[Watchdog]]
@@ -20,13 +15,12 @@ object WatchdogService {
       .mapZIO { _ =>
         for {
           counter <- refCounter.getAndUpdate(_.reset)
-          meassure = accumMeasure(counter)
           watchdog <- refWatchDog.updateAndGet(
-            _.check(measureValidation(meassure))
+            _.check(counter.value > min)
           )
-          _ <- ZIO.log(s"counter: $counter / measure: $meassure / watchdog: $watchdog")
+          _ <- ZIO.logDebug(s"$counter / $watchdog")
           validation <-
-            if (watchdog.isValid) ZIO.succeed(meassure)
+            if (watchdog.isValid) ZIO.succeed(watchdog)
             else ZIO.fail(watchdog)
         } yield validation
       }
