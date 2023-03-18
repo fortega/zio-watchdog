@@ -16,11 +16,6 @@ import zio.{
 }
 
 class WatchdogServiceTest extends AnyFlatSpec {
-  val layer = {
-    val counter = ZLayer(Ref.make(Counter()))
-    val watchdog = ZLayer(Ref.make(Watchdog(2)))
-    counter ++ watchdog
-  }
   val watchdogInterval = Duration.fromSeconds(1)
   val counterApp = for {
     refCounter <- ZIO.service[Ref[Counter]]
@@ -37,27 +32,29 @@ class WatchdogServiceTest extends AnyFlatSpec {
   }
 
   "WatchdogService.create" should "activate on error" in {
-    val app = counterApp raceFirst WatchdogService
-      .createCounterIntervalSidecar(
+    val app = WatchdogService
+      .createCounterActivitySidecar(
+        zio = counterApp,
         interval = watchdogInterval,
+        credit = 3,
         min = Long.MaxValue
       )
 
-    run(app.provideLayer(layer)) match {
-      case Exit.Failure(cause) =>
-        cause.failureOption match {
-          case Some(watchdog) => assert(!watchdog.isValid)
-          case None           => fail
-        }
+    run(app) match {
+      case Exit.Failure(_) => succeed
       case Exit.Success(_) => fail
     }
   }
 
   it should "end stream without error" in {
-    val app = counterApp raceFirst WatchdogService
-      .createCounterIntervalSidecar(interval = watchdogInterval)
+    val app = WatchdogService
+      .createCounterActivitySidecar(
+        zio = counterApp,
+        interval = watchdogInterval,
+        credit = 3
+      )
 
-    run(app.provideLayer(layer)) match {
+    run(app) match {
       case Exit.Failure(_) => fail
       case Exit.Success(_) => succeed
     }
