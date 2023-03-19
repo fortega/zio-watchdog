@@ -2,7 +2,6 @@ package com.github.fortega.service
 
 import com.github.fortega.model.{Counter, Watchdog}
 import org.scalatest.flatspec.AnyFlatSpec
-import zio.stream.ZStream
 import zio.{
   Duration,
   Exit,
@@ -14,17 +13,28 @@ import zio.{
   ZIO,
   ZLayer
 }
+import zio.logging.backend.SLF4J
+import zio.stream.ZStream
+import zio.Fiber
 
 class WatchdogServiceTest extends AnyFlatSpec {
-  val watchdogInterval = Duration.fromSeconds(1)
+  val logger = Runtime.removeDefaultLoggers >>> SLF4J.slf4j
+  val watchdogInterval = Duration.fromMillis(20)
+  val counterInterval = Duration.fromMillis(25)
+  val counterTo = 4
+  val expectedLast = counterTo - 1
   val counterApp = for {
     refCounter <- ZIO.service[Ref[Counter]]
     result <- ZStream
-      .range(0, 50)
-      .schedule(Schedule.fixed(Duration.fromMillis(100)))
-      .tap(_ => refCounter.update(_.increase))
-      .runDrain
+      .range(0, counterTo)
+      .schedule(Schedule.fixed(counterInterval))
+      .tap(_ => refCounter.update(CounterService.increase))
+      .runFold(0) { case (_, v) => v }
   } yield result
+  val sleepApp = for {
+    refCounter <- ZIO.service[Ref[Counter]]
+    _ <- Fiber.never.join
+  } yield 0
 
   def run[E, A](zio: ZIO[Any, E, A]): Exit[E, A] = Unsafe.unsafe {
     implicit unsafe =>
@@ -34,29 +44,37 @@ class WatchdogServiceTest extends AnyFlatSpec {
   "WatchdogService.create" should "activate on error" in {
     val app = WatchdogService
       .createCounterActivitySidecar(
-        zio = counterApp,
+        workflow = sleepApp,
         interval = watchdogInterval,
-        credit = 3,
-        min = Long.MaxValue
+        credit = 3
       )
+      .provideLayer(logger)
 
     run(app) match {
-      case Exit.Failure(_) => succeed
-      case Exit.Success(_) => fail
+      case Exit.Failure(cause) =>
+        cause.failureOption match {
+          case None        => fail
+          case Some(error) => succeed
+        }
+        succeed
+      case Exit.Success(last) =>
+        println(last)
+        fail
     }
   }
 
   it should "end stream without error" in {
     val app = WatchdogService
       .createCounterActivitySidecar(
-        zio = counterApp,
+        workflow = counterApp,
         interval = watchdogInterval,
         credit = 3
       )
+      .provideLayer(logger)
 
     run(app) match {
-      case Exit.Failure(_) => fail
-      case Exit.Success(_) => succeed
+      case Exit.Failure(_)    => fail
+      case Exit.Success(last) => assert(last == expectedLast)
     }
   }
 }
