@@ -17,7 +17,7 @@ import zio.logging.backend.SLF4J
 import zio.stream.ZStream
 import zio.Fiber
 
-class WatchdogServiceTest extends AnyFlatSpec {
+object WatchdogServiceTest {
   val logger = Runtime.removeDefaultLoggers >>> SLF4J.slf4j
   val watchdogInterval = Duration.fromMillis(20)
   val counterInterval = Duration.fromMillis(25)
@@ -34,12 +34,16 @@ class WatchdogServiceTest extends AnyFlatSpec {
   val sleepApp = for {
     refCounter <- ZIO.service[Ref[Counter]]
     _ <- Fiber.never.join
-  } yield 0
+  } yield expectedLast
 
   def run[E, A](zio: ZIO[Any, E, A]): Exit[E, A] = Unsafe.unsafe {
     implicit unsafe =>
       Runtime.default.unsafe.run[E, A](zio)
   }
+}
+
+class WatchdogServiceTest extends AnyFlatSpec {
+  import WatchdogServiceTest._
 
   "WatchdogService.create" should "activate on error" in {
     val app = WatchdogService

@@ -4,6 +4,7 @@ import com.github.fortega.model.{Counter, Watchdog}
 import zio.{Duration, Ref, Schedule, ZIO}
 import zio.stream.ZStream
 import zio.ZLayer
+
 object WatchdogService {
 
   /** Add a watchdog to a ZIO workflow usin a counter. Every time the interval
