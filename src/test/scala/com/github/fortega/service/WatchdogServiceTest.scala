@@ -34,16 +34,16 @@ object WatchdogServiceTest {
   val sleepApp = for {
     refCounter <- ZIO.service[Ref[Counter]]
     _ <- Fiber.never.join
-  } yield expectedLast
+  } yield expectedLast  
+}
+
+class WatchdogServiceTest extends AnyFlatSpec {
+  import WatchdogServiceTest._
 
   def run[E, A](zio: ZIO[Any, E, A]): Exit[E, A] = Unsafe.unsafe {
     implicit unsafe =>
       Runtime.default.unsafe.run[E, A](zio)
   }
-}
-
-class WatchdogServiceTest extends AnyFlatSpec {
-  import WatchdogServiceTest._
 
   "WatchdogService.create" should "activate on error" in {
     val app = WatchdogService
